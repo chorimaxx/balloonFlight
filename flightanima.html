@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>熱気球フライトアニメーション (側面ビュー)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 背景の空のグラデーション */
+        .sky-bg {
+            background: linear-gradient(to bottom, #4facfe 0%, #00f2fe 100%);
+        }
+        /* 気球をパスの中心に合わせるための調整 */
+        #balloon-group {
+            transform-origin: center bottom;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans text-gray-800">
+
+    <div class="max-w-5xl mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <!-- ヘッダー -->
+        <header class="mb-6 text-center">
+            <h1 class="text-3xl font-bold text-gray-800 flex items-center justify-center gap-3">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2C7.5 2 4 5.5 4 10c0 4.1 3 7.6 7 8.8V21a1 1 0 0 0 2 0v-2.2c4-.12 7-4.7 7-8.8 0-4.5-3.5-8-8-8z"/>
+                    <path d="M10.5 21h3"/>
+                    <path d="M12 21v2"/>
+                    <rect x="10" y="21" width="4" height="3" rx="1"/>
+                </svg>
+                熱気球フライトアニメーション
+            </h1>
+            <p class="text-gray-600 mt-2">KMLファイルを読み込み、移動距離と高度の側面ビューをアニメーションします。</p>
+        </header>
+
+        <!-- コントロールパネル -->
+        <div class="bg-white rounded-xl shadow-md p-5 mb-6">
+            <div class="flex flex-col lg:flex-row items-center justify-between gap-6">
+                
+                <div class="flex flex-col md:flex-row items-center gap-6 w-full lg:w-auto flex-1">
+                    <!-- ファイル読み込みボタン -->
+                    <div class="relative w-full md:w-auto shrink-0">
+                        <input type="file" id="kml-input" accept=".kml" class="hidden" />
+                        <button id="upload-btn" class="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg shadow transition duration-200 flex items-center justify-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                            </svg>
+                            KMLファイルを開く
+                        </button>
+                        <div id="file-name" class="text-sm text-gray-500 mt-2 text-center md:text-left">ファイルが選択されていません</div>
+                    </div>
+
+                    <!-- フライトデータ (横長) -->
+                    <div class="flex-1 w-full bg-gray-50 rounded-lg p-3 border border-gray-100 flex flex-wrap items-center justify-between gap-4">
+                        <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+                            <div class="flex items-center gap-2"><span class="text-gray-500">高度:</span><span class="font-mono text-blue-600 font-bold text-base" id="info-alt">0 ft</span></div>
+                            <div class="flex items-center gap-2"><span class="text-gray-500">移動距離:</span><span class="font-mono text-green-600 font-bold text-base" id="info-dist">0.00 km</span></div>
+                            <div class="flex items-center gap-2"><span class="text-gray-500">進捗:</span><span class="font-mono text-purple-600 font-bold text-base" id="info-progress">0:00 / 0:00</span></div>
+                        </div>
+                        <div id="time-mode-info" class="text-xs text-gray-500 font-medium">KMLをアップロードしてください</div>
+                    </div>
+                </div>
+
+                <!-- 再生コントロール -->
+                <div class="flex items-center gap-3 w-full lg:w-auto shrink-0 opacity-50 pointer-events-none justify-center lg:justify-end border-t lg:border-t-0 lg:border-l pt-4 lg:pt-0 lg:pl-6" id="playback-controls">
+                    <button id="play-btn" class="bg-green-500 hover:bg-green-600 text-white p-3 rounded-full shadow transition duration-200" title="再生/一時停止">
+                        <svg id="play-icon" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </button>
+                    <button id="reset-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 p-3 rounded-full shadow transition duration-200" title="リセット">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                    </button>
+                    <div class="flex flex-col ml-2">
+                        <label for="speed-slider" class="text-xs text-gray-500 mb-1">再生速度</label>
+                        <!-- 最小値を0.25に、ステップも0.25に変更 -->
+                        <input type="range" id="speed-slider" min="0.25" max="5" step="0.25" value="1" class="w-24 accent-blue-600">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- アニメーション表示エリア -->
+        <div class="bg-white rounded-xl shadow-md overflow-hidden relative">
+            
+            <!-- SVGキャンバス -->
+            <div class="w-full h-[500px] sky-bg relative">
+                <svg id="canvas" class="w-full h-full" viewBox="0 0 1000 500" preserveAspectRatio="xMidYMid meet">
+                    <!-- 固定レイヤー (高度目盛りなど、画面に留まるもの) -->
+                    <g id="fixed-grid-layer"></g>
+
+                    <!-- スクロールレイヤー (世界全体: 気球が1000mを超えると左に動く) -->
+                    <g id="world-layer">
+                        <!-- 地面 -->
+                        <rect id="ground-rect" x="0" y="450" width="1000" height="50" fill="#4ade80" />
+                        <line id="ground-line" x1="0" y1="450" x2="1000" y2="450" stroke="#16a34a" stroke-width="4" />
+
+                        <!-- スクロールする距離目盛り -->
+                        <g id="scrolling-grid-layer"></g>
+
+                        <!-- フライト軌跡 (速度に応じて色が変わるようにグループ化) -->
+                        <g id="flight-path-base"></g>
+                        <g id="flight-path-active"></g>
+
+                        <!-- 熱気球アイコン -->
+                        <g id="balloon-group" transform="translate(50, 450)">
+                            <!-- 速度表示用テキスト -->
+                            <text id="balloon-speed" x="0" y="-105" font-size="12" fill="#1f2937" font-weight="bold" text-anchor="middle" style="text-shadow: 1px 1px 2px rgba(255,255,255,0.9);"></text>
+                            
+                            <g id="balloon-svg">
+                            <path d="M -4,-12 Q 0,-22 4,-12 Q 0,-16 -4,-12 Z" fill="#f97316">
+                                <animate attributeName="opacity" values="0;1;0" dur="0.2s" repeatCount="indefinite" />
+                            </path>
+                            
+                            <!-- エンベロープ 1/5 (赤・全体ベース) -->
+                            <path d="M 0,-95 C -55,-95 -60,-35 -15,-15 C -5,-10 5,-10 15,-15 C 60,-35 55,-95 0,-95 Z" fill="#ef4444" />
+                            
+                            <!-- エンベロープ 2/5 (青) -->
+                            <path d="M 0,-95 C -36,-95 -36,-35 -9,-15 C -3,-10 5,-10 15,-15 C 60,-35 55,-95 0,-95 Z" fill="#3b82f6" />
+                            
+                            <!-- エンベロープ 3/5 (紫) -->
+                            <path d="M 0,-95 C -12,-95 -12,-35 -3,-15 C 2,-10 7,-10 15,-15 C 60,-35 55,-95 0,-95 Z" fill="#a855f7" />
+                            
+                            <!-- エンベロープ 4/5 (青) -->
+                            <path d="M 0,-95 C 12,-95 12,-35 3,-15 C 6,-10 10,-10 15,-15 C 60,-35 55,-95 0,-95 Z" fill="#3b82f6" />
+                            
+                            <!-- エンベロープ 5/5 (緑) -->
+                            <path d="M 0,-95 C 36,-95 36,-35 9,-15 C 11,-10 13,-10 15,-15 C 60,-35 55,-95 0,-95 Z" fill="#22c55e" />
+                            
+                            <!-- エンベロープ 外枠線 (重ね塗りの境界を綺麗に整える) -->
+                            <path d="M 0,-95 C -55,-95 -60,-35 -15,-15 C -5,-10 5,-10 15,-15 C 60,-35 55,-95 0,-95 Z" fill="none" stroke="#b91c1c" stroke-width="1.5" stroke-linejoin="round"/>
+                            
+                            <!-- バスケット -->
+                            <rect x="-10" y="-5" width="20" height="12" rx="1.5" fill="#d97706" stroke="#92400e" stroke-width="1.5"/>
+                            <line x1="-10" y1="-1" x2="10" y2="-1" stroke="#b45309" stroke-width="1"/>
+                            <line x1="-10" y1="3" x2="10" y2="3" stroke="#b45309" stroke-width="1"/>
+                        </g>
+                    </g>
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 状態管理 ---
+        const state = {
+            points: [],        // 解析された座標データ {lon, lat, alt, dist, time, timeOffset, speed}
+            mappedPoints: [],  // SVG座標系にマッピングされたデータ {x, y, alt, dist, timeOffset, speed, color}
+            activeLines: [],   // 表示切り替え用のDOM要素参照配列
+            maxDist: 0,
+            maxAlt: 0,
+            minAlt: 0,
+            maxSpeed: 0,       // 追加: 最高速度 (km/h)
+            renderMaxAlt: 1200, 
+            renderMinAlt: 0,    
+            maxTimeOffset: 0,  
+            isPlaying: false,
+            progress: 0,       // 0 to 1
+            animationId: null,
+            lastTimestamp: 0,
+            duration: 15000,   // デフォルトの基本再生時間（ミリ秒）
+            hasRealTimeData: false, 
+            viewMode: 'scrolling' 
+        };
+
+        // --- DOM要素 ---
+        const kmlInput = document.getElementById('kml-input');
+        const uploadBtn = document.getElementById('upload-btn');
+        const fileNameDisplay = document.getElementById('file-name');
+        const playbackControls = document.getElementById('playback-controls');
+        const playBtn = document.getElementById('play-btn');
+        const playIcon = document.getElementById('play-icon');
+        const resetBtn = document.getElementById('reset-btn');
+        const speedSlider = document.getElementById('speed-slider');
+        const flightPathBase = document.getElementById('flight-path-base');
+        const flightPathActive = document.getElementById('flight-path-active');
+        const balloonGroup = document.getElementById('balloon-group');
+        const balloonSpeed = document.getElementById('balloon-speed');
+        const infoAlt = document.getElementById('info-alt');
+        const infoDist = document.getElementById('info-dist');
+        const infoProgress = document.getElementById('info-progress');
+        const timeModeInfo = document.getElementById('time-mode-info');
+        
+        const fixedGridLayer = document.getElementById('fixed-grid-layer');
+        const scrollingGridLayer = document.getElementById('scrolling-grid-layer');
+        const worldLayer = document.getElementById('world-layer');
+        const groundRect = document.getElementById('ground-rect');
+        const groundLine = document.getElementById('ground-line');
+        
+        let pxPerMeter = 900 / 1000; 
+
+        // --- イベントリスナー ---
+        uploadBtn.addEventListener('click', () => kmlInput.click());
+        kmlInput.addEventListener('change', handleFileUpload);
+        playBtn.addEventListener('click', togglePlay);
+        resetBtn.addEventListener('click', resetAnimation);
+
+        // --- 初期化処理 ---
+        window.onload = function() {
+            balloonGroup.setAttribute('transform', 'translate(50, 450)');
+            balloonSpeed.textContent = ''; 
+            worldLayer.setAttribute('transform', 'translate(0, 0)'); 
+            
+            fixedGridLayer.innerHTML = '';
+            scrollingGridLayer.innerHTML = '';
+            
+            const maxDefAlt = 1200;
+            const stepDefAlt = 300;
+            for (let alt = 0; alt <= maxDefAlt; alt += stepDefAlt) {
+                const y = 450 - (alt / maxDefAlt) * 400;
+                
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("x1", "40");
+                line.setAttribute("y1", y);
+                line.setAttribute("x2", "960");
+                line.setAttribute("y2", y);
+                line.setAttribute("stroke", "rgba(255,255,255,0.3)");
+                line.setAttribute("stroke-dasharray", "4,4");
+                fixedGridLayer.appendChild(line);
+
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("x", "35");
+                text.setAttribute("y", y + 4);
+                text.setAttribute("fill", "#ffffff");
+                text.setAttribute("font-size", "12");
+                text.setAttribute("text-anchor", "end");
+                text.setAttribute("font-weight", "bold");
+                text.style.textShadow = "1px 1px 2px rgba(0,0,0,0.5)";
+                text.textContent = alt + "ft";
+                fixedGridLayer.appendChild(text);
+            }
+
+            const distSteps = 10;
+            for (let i = 0; i <= distSteps; i++) {
+                const dist = 100 * i; 
+                const x = 50 + dist * pxPerMeter;
+
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("x1", x);
+                line.setAttribute("y1", "50");
+                line.setAttribute("x2", x);
+                line.setAttribute("y2", "460");
+                line.setAttribute("stroke", "rgba(255,255,255,0.2)");
+                scrollingGridLayer.appendChild(line);
+
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("x", x);
+                text.setAttribute("y", "475");
+                text.setAttribute("fill", "#1f2937");
+                text.setAttribute("font-size", "12");
+                text.setAttribute("text-anchor", "middle");
+                text.setAttribute("font-weight", "bold");
+                text.textContent = dist >= 1000 ? (dist / 1000).toFixed(1) + "km" : dist + "m";
+                scrollingGridLayer.appendChild(text);
+            }
+        };
+
+        // --- ファイル読み込み・解析 ---
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            fileNameDisplay.textContent = file.name;
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                const xmlString = e.target.result;
+                const parsedData = parseKML(xmlString);
+                
+                if (parsedData.length < 2) {
+                    alert('有効な経路データ（座標）がKMLファイルから見つかりませんでした。');
+                    return;
+                }
+
+                prepareFlightData(parsedData);
+            };
+            
+            reader.readAsText(file);
+        }
+
+        // KMLのXML文字列から座標を抽出
+        function parseKML(xmlString) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+            let rawPoints = [];
+
+            let customTimeStamps = [];
+            const timeStampsIndex = xmlString.indexOf('<!-- time stamps -->');
+            if (timeStampsIndex !== -1) {
+                const timeStampsSection = xmlString.substring(timeStampsIndex);
+                const timeRegex = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?/g;
+                const matches = timeStampsSection.match(timeRegex);
+                if (matches) {
+                    customTimeStamps = matches.map(t => new Date(t).getTime()).filter(t => !isNaN(t));
+                }
+            }
+
+            const tracks = xmlDoc.getElementsByTagName("gx:Track");
+            if (tracks.length > 0) {
+                const track = tracks[0];
+                const whens = track.getElementsByTagName("when");
+                const coords = track.getElementsByTagName("gx:coord");
+                
+                for (let i = 0; i < coords.length; i++) {
+                    const parts = coords[i].textContent.trim().split(/\s+/);
+                    if (parts.length >= 2) {
+                        let time = null;
+                        if (i < whens.length) {
+                            time = new Date(whens[i].textContent).getTime();
+                        }
+                        rawPoints.push({
+                            lon: parseFloat(parts[0]),
+                            lat: parseFloat(parts[1]),
+                            alt: parts.length >= 3 ? parseFloat(parts[2]) : 0,
+                            time: time
+                        });
+                    }
+                }
+
+                const hasValidTime = rawPoints.length > 0 && rawPoints.every(p => p.time !== null && !isNaN(p.time));
+                if (hasValidTime) {
+                    return rawPoints;
+                }
+            }
+
+            rawPoints = [];
+            const coordsNodes = xmlDoc.getElementsByTagName("coordinates");
+            if (coordsNodes.length > 0) {
+                let bestCoords = "";
+                for (let i = 0; i < coordsNodes.length; i++) {
+                    if (coordsNodes[i].textContent.length > bestCoords.length) {
+                        bestCoords = coordsNodes[i].textContent;
+                    }
+                }
+                
+                const coordsArray = bestCoords.trim().split(/\s+/);
+                let validCoordIndex = 0;
+                for (let pt of coordsArray) {
+                    const parts = pt.split(',');
+                    if (parts.length >= 2) {
+                        let time = null;
+                        if (customTimeStamps.length > validCoordIndex) {
+                            time = customTimeStamps[validCoordIndex];
+                        }
+                        rawPoints.push({
+                            lon: parseFloat(parts[0]),
+                            lat: parseFloat(parts[1]),
+                            alt: parts.length >= 3 ? parseFloat(parts[2]) : 0,
+                            time: time
+                        });
+                        validCoordIndex++;
+                    }
+                }
+                
+                const hasValidCoordsTime = rawPoints.length > 0 && rawPoints.every(p => p.time !== null && !isNaN(p.time));
+                if (hasValidCoordsTime) {
+                    return rawPoints;
+                }
+            }
+
+            if (rawPoints.length === 0) {
+                const gxCoords = xmlDoc.getElementsByTagName("gx:coord");
+                for (let i = 0; i < gxCoords.length; i++) {
+                    const parts = gxCoords[i].textContent.trim().split(/\s+/);
+                    if (parts.length >= 2) {
+                        rawPoints.push({
+                            lon: parseFloat(parts[0]),
+                            lat: parseFloat(parts[1]),
+                            alt: parts.length >= 3 ? parseFloat(parts[2]) : 0,
+                            time: null
+                        });
+                    }
+                }
+            }
+
+            return rawPoints;
+        }
+
+        // --- データ処理・数学系 ---
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; 
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // 座標データから累積距離と速度を計算し、SVG座標にマッピングする準備
+        function prepareFlightData(rawPoints) {
+            state.points = [];
+            let cumulativeDist = 0;
+            let maxSpeedKmh = 0;
+
+            const hasTimeData = rawPoints.length > 1 && rawPoints[0].time !== null && !isNaN(rawPoints[0].time);
+            state.hasRealTimeData = hasTimeData;
+
+            const startAltMeters = rawPoints.length > 0 ? rawPoints[0].alt : 0;
+            const mToFt = 3.28084; 
+
+            for (let i = 0; i < rawPoints.length; i++) {
+                let segmentDist = 0;
+                let segmentTimeMs = 0;
+
+                if (i > 0) {
+                    const prev = rawPoints[i-1];
+                    const curr = rawPoints[i];
+                    segmentDist = getDistance(prev.lat, prev.lon, curr.lat, curr.lon);
+                    cumulativeDist += segmentDist;
+                    
+                    if (hasTimeData) {
+                        segmentTimeMs = curr.time - prev.time;
+                    }
+                }
+
+                let timeOffset = 0;
+                let speedMs = 0;
+
+                if (hasTimeData) {
+                    timeOffset = rawPoints[i].time - rawPoints[0].time;
+                    if (segmentTimeMs > 0) {
+                        speedMs = segmentDist / (segmentTimeMs / 1000);
+                    }
+                } else {
+                    timeOffset = cumulativeDist;
+                    speedMs = segmentDist > 0 ? 1 : 0; // 時間データがない場合の仮の速度
+                }
+
+                const gainedAltFt = (rawPoints[i].alt - startAltMeters) * mToFt;
+                const speedKmh = speedMs * 3.6;
+
+                if (speedKmh > maxSpeedKmh) {
+                    maxSpeedKmh = speedKmh;
+                }
+
+                state.points.push({
+                    ...rawPoints[i],
+                    dist: cumulativeDist,
+                    timeOffset: timeOffset,
+                    alt: gainedAltFt,
+                    speed: speedKmh // そのポイント（直前の区間）の速度
+                });
+            }
+
+            state.maxDist = cumulativeDist;
+            state.maxTimeOffset = state.points[state.points.length - 1].timeOffset;
+            state.maxSpeed = maxSpeedKmh || 30; // 0割回避のためのデフォルト値
+            
+            const altitudes = state.points.map(p => p.alt);
+            state.maxAlt = Math.max(...altitudes);
+            state.minAlt = Math.min(0, ...altitudes); 
+
+            const rawRenderMax = Math.max(state.maxAlt * 1.1, 300);
+            state.renderMaxAlt = Math.ceil(rawRenderMax / 300) * 300;
+            state.renderMinAlt = Math.floor(Math.min(state.minAlt, 0) / 300) * 300;
+
+            timeModeInfo.textContent = hasTimeData ? "🕒 実際の飛行速度で再現中" : "⚠️ 時間データなし (等速移動)";
+
+            mapPointsToSVG();
+            drawGrid();
+            drawBasePath();
+            
+            playbackControls.classList.remove('opacity-50', 'pointer-events-none');
+            resetAnimation();
+        }
+
+        // 実データをSVGキャンバスのサイズと色情報にマッピング
+        function mapPointsToSVG() {
+            const paddingX = 50;
+            const groundY = 450;
+            const heightY = 400;
+
+            state.mappedPoints = state.points.map((p, index) => {
+                const x = paddingX + p.dist * pxPerMeter;
+                const y = groundY - ((p.alt - state.renderMinAlt) / (state.renderMaxAlt - state.renderMinAlt)) * heightY;
+                
+                // 速度に応じた色相(Hue)の計算
+                // 0 km/h = 0 (赤), 最大速度 = 240 (青)
+                const speedRatio = state.maxSpeed > 0 ? Math.min(p.speed / state.maxSpeed, 1) : 0;
+                const hue = speedRatio * 240;
+                // 時間データがない場合は全てデフォルトの赤にする
+                const color = state.hasRealTimeData ? `hsl(${hue}, 100%, 50%)` : `hsl(0, 100%, 50%)`;
+
+                return { x, y, alt: p.alt, dist: p.dist, timeOffset: p.timeOffset, speed: p.speed, color: color };
+            });
+
+            const groundWidth = Math.max(1000, paddingX + state.maxDist * pxPerMeter + 500);
+            groundRect.setAttribute("width", groundWidth);
+            groundLine.setAttribute("x2", groundWidth);
+        }
+
+        // --- 描画系 ---
+
+        // 背景グリッドと目盛りの描画
+        function drawGrid() {
+            fixedGridLayer.innerHTML = '';
+            scrollingGridLayer.innerHTML = '';
+            
+            const stepAlt = 300;
+            const startAlt = state.renderMinAlt || 0;
+            const endAlt = state.renderMaxAlt || 1200;
+
+            for (let alt = startAlt; alt <= endAlt; alt += stepAlt) {
+                const y = 450 - ((alt - startAlt) / (endAlt - startAlt)) * 400;
+                
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("x1", "40");
+                line.setAttribute("y1", y);
+                line.setAttribute("x2", "960");
+                line.setAttribute("y2", y);
+                line.setAttribute("stroke", "rgba(255,255,255,0.3)");
+                line.setAttribute("stroke-dasharray", "4,4");
+                fixedGridLayer.appendChild(line);
+
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("x", "35");
+                text.setAttribute("y", y + 4);
+                text.setAttribute("fill", "#ffffff");
+                text.setAttribute("font-size", "12");
+                text.setAttribute("text-anchor", "end");
+                text.setAttribute("font-weight", "bold");
+                text.style.textShadow = "1px 1px 2px rgba(0,0,0,0.5)";
+                text.textContent = alt + "ft";
+                fixedGridLayer.appendChild(text);
+            }
+
+            const isFitMode = state.viewMode === 'fit';
+            let stepSize = 100; 
+            let distSteps = Math.ceil(state.maxDist / 100);
+
+            if (isFitMode && state.maxDist > 1000) {
+                const roughStep = state.maxDist / 5;
+                const order = Math.pow(10, Math.floor(Math.log10(roughStep)));
+                stepSize = Math.round(roughStep / order) * order;
+                distSteps = Math.ceil(state.maxDist / stepSize);
+            }
+
+            for (let i = 0; i <= distSteps; i++) {
+                const dist = i * stepSize;
+                const x = 50 + dist * pxPerMeter;
+
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("x1", x);
+                line.setAttribute("y1", "50");
+                line.setAttribute("x2", x);
+                line.setAttribute("y2", "460");
+                line.setAttribute("stroke", "rgba(255,255,255,0.2)");
+                scrollingGridLayer.appendChild(line);
+
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("x", x);
+                text.setAttribute("y", "475");
+                text.setAttribute("fill", "#1f2937");
+                text.setAttribute("font-size", "12");
+                text.setAttribute("text-anchor", "middle");
+                text.setAttribute("font-weight", "bold");
+                
+                if (dist >= 1000) {
+                    text.textContent = (dist / 1000).toFixed(1).replace('.0', '') + "km";
+                } else {
+                    text.textContent = dist + "m";
+                }
+                scrollingGridLayer.appendChild(text);
+            }
+        }
+
+        // 軌跡全体を細かな線分（セグメント）に分けて描画し、色を割り当てる
+        function drawBasePath() {
+            flightPathBase.innerHTML = '';
+            flightPathActive.innerHTML = '';
+            state.activeLines = [];
+
+            if (state.mappedPoints.length === 0) return;
+            
+            for (let i = 1; i < state.mappedPoints.length; i++) {
+                const p = state.mappedPoints[i];
+                const prev = state.mappedPoints[i-1];
+
+                // 待機時表示用のベースライン（点線）
+                const baseLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                baseLine.setAttribute("x1", prev.x);
+                baseLine.setAttribute("y1", prev.y);
+                baseLine.setAttribute("x2", p.x);
+                baseLine.setAttribute("y2", p.y);
+                baseLine.setAttribute("stroke", p.color); // 速度に応じた色
+                baseLine.setAttribute("stroke-width", "3");
+                baseLine.setAttribute("stroke-dasharray", "5,5");
+                baseLine.setAttribute("opacity", "0.3");
+                flightPathBase.appendChild(baseLine);
+
+                // アニメーション用の実線（初期状態は非表示）
+                const activeLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                activeLine.setAttribute("x1", prev.x);
+                activeLine.setAttribute("y1", prev.y);
+                activeLine.setAttribute("x2", p.x);
+                activeLine.setAttribute("y2", p.y);
+                activeLine.setAttribute("stroke", p.color); // 速度に応じた色
+                activeLine.setAttribute("stroke-width", "4");
+                activeLine.setAttribute("stroke-linecap", "round");
+                activeLine.style.display = "none";
+                flightPathActive.appendChild(activeLine);
+                
+                // JavaScriptから高速に操作できるように配列に保存
+                state.activeLines[i] = activeLine;
+            }
+
+            // 現在通過中のセグメントを描画するための動的ライン
+            const currentActiveLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            currentActiveLine.id = "current-active-line";
+            currentActiveLine.setAttribute("stroke-width", "4");
+            currentActiveLine.setAttribute("stroke-linecap", "round");
+            currentActiveLine.style.display = "none";
+            flightPathActive.appendChild(currentActiveLine);
+        }
+
+        // --- アニメーション制御 ---
+
+        function togglePlay() {
+            if (state.points.length === 0) return;
+            
+            state.isPlaying = !state.isPlaying;
+            
+            if (state.isPlaying) {
+                playIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />`;
+                playBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+                playBtn.classList.add('bg-yellow-500', 'hover:bg-yellow-600');
+                
+                if (state.progress >= 1) {
+                    resetAnimation();
+                    state.isPlaying = true; 
+                }
+                
+                state.lastTimestamp = performance.now();
+                state.animationId = requestAnimationFrame(animate);
+            } else {
+                playIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />`;
+                playBtn.classList.add('bg-green-500', 'hover:bg-green-600');
+                playBtn.classList.remove('bg-yellow-500', 'hover:bg-yellow-600');
+                cancelAnimationFrame(state.animationId);
+            }
+        }
+
+        function resetAnimation() {
+            state.isPlaying = false;
+            state.progress = 0;
+            cancelAnimationFrame(state.animationId);
+            
+            state.viewMode = 'scrolling';
+            pxPerMeter = 900 / 1000;
+            if (state.points.length > 0) {
+                mapPointsToSVG();
+                drawGrid();
+                drawBasePath();
+                worldLayer.setAttribute('transform', 'translate(0, 0)');
+            }
+            
+            playIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />`;
+            playBtn.classList.add('bg-green-500', 'hover:bg-green-600');
+            playBtn.classList.remove('bg-yellow-500', 'hover:bg-yellow-600');
+            
+            updateRender(0);
+        }
+
+        function switchToFitView() {
+            if (state.maxDist <= 1000) return; 
+
+            state.viewMode = 'fit';
+            pxPerMeter = 900 / state.maxDist;
+
+            mapPointsToSVG();
+            drawGrid();
+            drawBasePath();
+            
+            worldLayer.setAttribute('transform', 'translate(0, 0)');
+            updateRender(1);
+        }
+
+        function animate(timestamp) {
+            if (!state.isPlaying) return;
+
+            const delta = timestamp - state.lastTimestamp;
+            state.lastTimestamp = timestamp;
+
+            const speedMultiplier = parseFloat(speedSlider.value);
+            const durationMs = state.duration / speedMultiplier;
+            
+            state.progress += delta / durationMs;
+
+            if (state.progress >= 1) {
+                state.progress = 1;
+                updateRender(1);
+                togglePlay(); 
+                switchToFitView(); 
+                return;
+            }
+
+            updateRender(state.progress);
+            state.animationId = requestAnimationFrame(animate);
+        }
+
+        // 進行度に応じた描画更新
+        function updateRender(progress) {
+            if (state.mappedPoints.length === 0) return;
+
+            const targetTime = progress * state.maxTimeOffset;
+
+            // 現在地（時間基準）を補間で見つける
+            let i = 0;
+            while (i < state.mappedPoints.length - 1 && state.mappedPoints[i+1].timeOffset < targetTime) {
+                i++;
+            }
+
+            const p1 = state.mappedPoints[i];
+            const p2 = state.mappedPoints[i+1] || p1;
+            
+            const segmentTime = p2.timeOffset - p1.timeOffset;
+            const ratio = segmentTime === 0 ? 0 : (targetTime - p1.timeOffset) / segmentTime;
+
+            const currentX = p1.x + (p2.x - p1.x) * ratio;
+            const currentY = p1.y + (p2.y - p1.y) * ratio;
+            const currentAlt = p1.alt + (p2.alt - p1.alt) * ratio;
+            const currentDist = p1.dist + (p2.dist - p1.dist) * ratio;
+
+            // 気球上の速度テキスト表示
+            let speedText = "";
+            if (state.hasRealTimeData) {
+                speedText = p2.speed.toFixed(1) + " km/h";
+            } else {
+                speedText = "0.0 km/h";
+            }
+
+            // 気球の移動
+            balloonGroup.setAttribute('transform', `translate(${currentX}, ${currentY})`);
+            balloonSpeed.textContent = speedText;
+
+            // 世界のスクロール (スクロールモード時のみ、気球が1000mを超えたら左へ流す)
+            let scrollX = 0;
+            if (state.viewMode === 'scrolling' && currentDist > 1000) {
+                scrollX = -(currentDist - 1000) * pxPerMeter;
+            }
+            worldLayer.setAttribute('transform', `translate(${scrollX}, 0)`);
+
+            // アクティブなパス（通過済みの軌跡）の表示制御
+            for (let j = 1; j < state.mappedPoints.length; j++) {
+                if (state.activeLines[j]) {
+                    // i番目のポイントまでは完全に通過済みなので表示する
+                    state.activeLines[j].style.display = (j <= i) ? "block" : "none";
+                }
+            }
+
+            // 現在通過中のセグメント（動的に長さが変わる線）の描画
+            const currentLine = document.getElementById("current-active-line");
+            if (ratio > 0 && currentLine) {
+                currentLine.setAttribute("x1", p1.x);
+                currentLine.setAttribute("y1", p1.y);
+                currentLine.setAttribute("x2", currentX);
+                currentLine.setAttribute("y2", currentY);
+                currentLine.setAttribute("stroke", p2.color);
+                currentLine.style.display = "block";
+            } else if (currentLine) {
+                currentLine.style.display = "none";
+            }
+
+            // 統計情報の更新
+            infoAlt.textContent = Math.round(currentAlt) + ' ft';
+            infoDist.textContent = (currentDist / 1000).toFixed(2) + ' km';
+            
+            // 進捗を時間表示（分:秒）に変更
+            const formatTime = (ms) => {
+                if (isNaN(ms) || ms < 0) return "0:00";
+                const totalSeconds = Math.floor(ms / 1000);
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+                return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            };
+            
+            infoProgress.textContent = `${formatTime(targetTime)} / ${formatTime(state.maxTimeOffset)}`;
+        }
+
+    </script>
+</body>
+</html>
