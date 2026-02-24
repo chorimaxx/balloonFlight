@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>フライトログ・ダッシュボード</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+        }
+
+        .flight-badge {
+            font-size: 0.65rem;
+            line-height: 1.1;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 min-h-screen font-sans text-gray-800">
+
+    <div class="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">
+        <!-- ヘッダー -->
+        <header class="mb-8 text-center">
+            <h1
+                class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-teal-400 mb-2">
+                Flight Log Dashboard
+            </h1>
+            <p class="text-gray-500">フライト記録の管理と新規登録</p>
+        </header>
+
+        <!-- コントロールパネル -->
+        <div class="bg-white rounded-2xl shadow-xl p-6 mb-8 border border-gray-100">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-6">
+                <!-- 月選択 -->
+                <div class="flex items-center gap-4">
+                    <button id="prev-month" class="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </button>
+                    <div id="current-month-display" class="text-2xl font-bold text-gray-700 min-w-[150px] text-center">
+                        2024年 2月
+                    </div>
+                    <button id="next-month" class="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- ファイル読み込みボタン -->
+                <div class="flex items-center gap-4">
+                    <input type="file" id="kml-upload" accept=".kml" class="hidden" />
+                    <button id="upload-btn"
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-full shadow-lg transition-all flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        フライト記録（KML読み込み）
+                    </button>
+                    <div class="flex gap-2">
+                        <select id="year-select"
+                            class="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-lg p-2"></select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- カレンダー -->
+        <div class="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
+            <div class="calendar-grid bg-gray-50 border-b border-gray-100">
+                <div class="py-3 text-center text-xs font-bold text-red-400 uppercase tracking-widest">Sun</div>
+                <div class="py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-widest">Mon</div>
+                <div class="py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-widest">Tue</div>
+                <div class="py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-widest">Wed</div>
+                <div class="py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-widest">Thu</div>
+                <div class="py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-widest">Fri</div>
+                <div class="py-3 text-center text-xs font-bold text-blue-400 uppercase tracking-widest">Sat</div>
+            </div>
+            <div id="calendar-body" class="calendar-grid"></div>
+        </div>
+    </div>
+
+    <script>
+        const state = {
+            currentDate: new Date(),
+            flights: JSON.parse(localStorage.getItem('balloon_flights') || '[]')
+        };
+
+        const elements = {
+            calendarBody: document.getElementById('calendar-body'),
+            currentMonthDisplay: document.getElementById('current-month-display'),
+            yearSelect: document.getElementById('year-select'),
+            prevMonthBtn: document.getElementById('prev-month'),
+            nextMonthBtn: document.getElementById('next-month'),
+            kmlUpload: document.getElementById('kml-upload'),
+            uploadBtn: document.getElementById('upload-btn')
+        };
+
+        function saveFlights() {
+            localStorage.setItem('balloon_flights', JSON.stringify(state.flights));
+        }
+
+        function initSelection() {
+            const currentYear = new Date().getFullYear();
+            elements.yearSelect.innerHTML = '';
+            for (let i = currentYear - 5; i <= currentYear + 5; i++) {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.textContent = i + '年';
+                elements.yearSelect.appendChild(opt);
+            }
+            elements.yearSelect.value = state.currentDate.getFullYear();
+        }
+
+        function renderCalendar() {
+            elements.calendarBody.innerHTML = '';
+            const year = state.currentDate.getFullYear();
+            const month = state.currentDate.getMonth();
+            elements.currentMonthDisplay.textContent = `${year}年 ${month + 1}月`;
+            elements.yearSelect.value = year;
+
+            const firstDay = new Date(year, month, 1).getDay();
+            const lastDate = new Date(year, month + 1, 0).getDate();
+
+            for (let i = 0; i < firstDay; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'h-24 sm:h-32 border-b border-r border-gray-50 bg-gray-50/50';
+                elements.calendarBody.appendChild(cell);
+            }
+
+            const todayStr = new Date().toISOString().split('T')[0];
+
+            for (let day = 1; day <= lastDate; day++) {
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const cell = document.createElement('div');
+                cell.className = `h-24 sm:h-32 border-b border-r border-gray-100 p-1 relative group hover:bg-blue-50/30 transition-colors overflow-hidden ${dateStr === todayStr ? 'bg-blue-50/50' : ''}`;
+
+                const dayNum = document.createElement('span');
+                dayNum.className = `text-xs font-semibold ${dateStr === todayStr ? 'text-blue-600 bg-blue-100 rounded-full w-5 h-5 flex items-center justify-center' : 'text-gray-400'}`;
+                dayNum.textContent = day;
+                cell.appendChild(dayNum);
+
+                // この日のフライトを表示
+                const dayFlights = state.flights.filter(f => f.date === dateStr);
+                dayFlights.forEach(flight => {
+                    const flightContainer = document.createElement('div');
+                    flightContainer.className = 'relative mt-1 group/flight';
+
+                    const btn = document.createElement('button');
+                    btn.className = 'w-full p-1 bg-white border border-blue-200 rounded text-left hover:bg-blue-100 transition-colors shadow-sm overflow-hidden';
+                    btn.innerHTML = `
+                        <div class="flight-badge font-bold text-blue-700 truncate">${flight.startTime}-${flight.endTime}</div>
+                        <div class="flight-badge text-gray-500">高度: ${flight.maxAlt}ft</div>
+                        <div class="flight-badge text-gray-500">距離: ${flight.straightDist}km</div>
+                    `;
+                    btn.onclick = (e) => {
+                        e.stopPropagation();
+                        localStorage.setItem('pending_kml', flight.kmlContent);
+                        window.location.href = `flightanima.html?flightId=${flight.id}`;
+                    };
+                    flightContainer.appendChild(btn);
+
+                    // 削除ボタン (X)
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    `;
+                    deleteBtn.className = 'absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover/flight:opacity-100 transition-opacity hover:bg-red-600 shadow-sm z-10';
+                    deleteBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        if (confirm('このフライト記録を削除しますか？')) {
+                            state.flights = state.flights.filter(f => f.id !== flight.id);
+                            saveFlights();
+                            renderCalendar();
+                        }
+                    };
+                    flightContainer.appendChild(deleteBtn);
+
+                    cell.appendChild(flightContainer);
+                });
+
+                // 「＋」ボタン
+                const addButton = document.createElement('button');
+                addButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>`;
+                addButton.className = 'absolute top-1 right-1 p-1 bg-gray-100 text-gray-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500 hover:text-white';
+                addButton.onclick = () => window.location.href = `flightanima.html?date=${dateStr}`;
+                cell.appendChild(addButton);
+
+                elements.calendarBody.appendChild(cell);
+            }
+
+            const totalCells = firstDay + lastDate;
+            const remaining = (7 - (totalCells % 7)) % 7;
+            for (let i = 0; i < remaining; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'h-24 sm:h-32 border-b border-r border-gray-50 bg-gray-50/50';
+                elements.calendarBody.appendChild(cell);
+            }
+        }
+
+        // --- KML Parsing Logic ---
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        elements.uploadBtn.onclick = () => elements.kmlUpload.click();
+        elements.kmlUpload.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const kmlContent = event.target.result;
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(kmlContent, "text/xml");
+
+                let points = [];
+                // Namespaceを無視して検索
+                const tracks = xmlDoc.getElementsByTagName("Track").length > 0 ? xmlDoc.getElementsByTagName("Track") : xmlDoc.getElementsByTagName("gx:Track");
+                if (tracks.length > 0) {
+                    const whens = tracks[0].getElementsByTagName("when");
+                    const coords = tracks[0].getElementsByTagName("coord").length > 0 ? tracks[0].getElementsByTagName("coord") : tracks[0].getElementsByTagName("gx:coord");
+                    for (let i = 0; i < coords.length; i++) {
+                        const parts = coords[i].textContent.trim().split(/[,\s]+/);
+                        const time = i < whens.length ? new Date(whens[i].textContent) : null;
+                        const alt = parts.length >= 3 ? parseFloat(parts[2]) : 0;
+                        points.push({ lat: parseFloat(parts[1]), lon: parseFloat(parts[0]), alt: isNaN(alt) ? 0 : alt, time: time });
+                    }
+                } else {
+                    const coordsNodes = xmlDoc.getElementsByTagName("coordinates");
+                    for (let n = 0; n < coordsNodes.length; n++) {
+                        const text = coordsNodes[n].textContent.trim();
+                        if (!text) continue;
+
+                        // 全ての空白とカンマを区切り文字として扱い、平坦な配列にする
+                        const allValues = text.split(/[,\s]+/).filter(v => v.length > 0);
+
+                        // 3つずつ（または2つずつ）取り出す
+                        for (let i = 0; i < allValues.length; i += 3) {
+                            if (i + 1 < allValues.length) {
+                                const lon = parseFloat(allValues[i]);
+                                const lat = parseFloat(allValues[i + 1]);
+                                // 3つ目の値（高度）がない場合は 0 とする
+                                const alt = (i + 2 < allValues.length && !isNaN(parseFloat(allValues[i + 2]))) ? parseFloat(allValues[i + 2]) : 0;
+
+                                if (!isNaN(lat) && !isNaN(lon)) {
+                                    points.push({
+                                        lat: lat,
+                                        lon: lon,
+                                        alt: alt,
+                                        time: null
+                                    });
+                                }
+                            }
+                        }
+                        if (points.length > 0) break;
+                    }
+                }
+
+                if (points.length < 2) {
+                    alert("データが不足しています");
+                    return;
+                }
+
+                const firstPoint = points[0];
+                const lastPoint = points[points.length - 1];
+
+                const formatDate = (d) => {
+                    const dateObj = d || new Date();
+                    const y = dateObj.getFullYear();
+                    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+                    const day = String(dateObj.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${day}`;
+                };
+                const date = formatDate(firstPoint.time);
+
+                const formatTime = (d) => d ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : "--:--";
+
+                const mToFt = 3.28084;
+                // 最高高度の探索をループで行う
+                let maxAltM = points[0].alt;
+                for (let i = 1; i < points.length; i++) {
+                    if (points[i].alt > maxAltM) maxAltM = points[i].alt;
+                }
+
+                const startAltM = firstPoint.alt;
+                const gainedAltFt = Math.round((maxAltM - startAltM) * mToFt);
+                const straightDist = getDistance(firstPoint.lat, firstPoint.lon, lastPoint.lat, lastPoint.lon).toFixed(2);
+
+                const newFlight = {
+                    id: Date.now(),
+                    date: date,
+                    startTime: formatTime(firstPoint.time),
+                    endTime: formatTime(lastPoint.time),
+                    maxAlt: gainedAltFt,
+                    straightDist: straightDist,
+                    kmlContent: kmlContent
+                };
+
+                state.flights.push(newFlight);
+                saveFlights();
+
+                // カレンダーの表示位置をフライトの日に合わせる
+                state.currentDate = firstPoint.time ? new Date(firstPoint.time) : new Date();
+
+                renderCalendar();
+            };
+            reader.readAsText(file);
+        };
+
+        elements.prevMonthBtn.onclick = () => { state.currentDate.setMonth(state.currentDate.getMonth() - 1); renderCalendar(); };
+        elements.nextMonthBtn.onclick = () => { state.currentDate.setMonth(state.currentDate.getMonth() + 1); renderCalendar(); };
+        elements.yearSelect.onchange = (e) => { state.currentDate.setFullYear(parseInt(e.target.value)); renderCalendar(); };
+
+        initSelection();
+        renderCalendar();
+    </script>
+</body>
+
+</html>
