@@ -149,21 +149,6 @@
                     </svg>
                 </div>
 
-                <!-- 着陸時の最高速度表示 (中央にポップアップ) -->
-                <div id="max-speed-overlay"
-                    class="absolute inset-0 flex items-center justify-center z-20 pointer-events-none opacity-0 transition-opacity duration-500">
-                    <div class="bg-white/90 backdrop-blur-md rounded-2xl shadow-2xl p-8 border-2 border-blue-500 text-center transform scale-90 transition-transform duration-500"
-                        id="max-speed-card">
-                        <h2 class="text-blue-600 font-bold text-xl mb-2">🎉 フライト完走！</h2>
-                        <div class="text-gray-500 text-sm mb-1">今回の最高速度</div>
-                        <div class="text-5xl font-black text-gray-800 mb-4 font-mono"><span
-                                id="result-max-speed">0.0</span> <span class="text-2xl">km/h</span></div>
-                        <button onclick="document.getElementById('max-speed-overlay').classList.add('opacity-0');"
-                            class="pointer-events-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-full transition-colors">
-                            閉じる
-                        </button>
-                    </div>
-                </div>
 
                 <svg id="canvas" class="w-full h-full" viewBox="0 0 1000 500" preserveAspectRatio="xMidYMid meet">
                     <!-- 固定レイヤー (高度目盛りなど、画面に留まるもの) -->
@@ -251,8 +236,7 @@
             lastTimestamp: 0,
             duration: 15000,   // デフォルトの基本再生時間（ミリ秒）
             hasRealTimeData: false,
-            viewMode: 'scrolling',
-            maxSpeedAchieved: 0 // 追加: 実際に到達した最高速度
+            viewMode: 'scrolling'
         };
 
         // --- DOM要素 ---
@@ -276,9 +260,6 @@
         const speedometerContainer = document.getElementById('speedometer-container');
         const speedNeedle = document.getElementById('speed-needle');
         const speedValue = document.getElementById('speed-value');
-        const maxSpeedOverlay = document.getElementById('max-speed-overlay');
-        const resultMaxSpeed = document.getElementById('result-max-speed');
-        const maxSpeedCard = document.getElementById('max-speed-card');
 
         const fixedGridLayer = document.getElementById('fixed-grid-layer');
         const scrollingGridLayer = document.getElementById('scrolling-grid-layer');
@@ -581,7 +562,6 @@
                 speedometerContainer.classList.add('hidden');
             }
 
-            state.maxSpeedAchieved = 0; // リセット
 
             mapPointsToSVG();
             drawGrid();
@@ -786,10 +766,6 @@
             playBtn.classList.remove('bg-yellow-500', 'hover:bg-yellow-600');
 
             updateRender(0);
-
-            // 最高速度表示を隠す
-            maxSpeedOverlay.classList.add('opacity-0');
-            maxSpeedCard.classList.add('scale-90');
         }
 
         function switchToFitView() {
@@ -823,12 +799,6 @@
                 togglePlay();
                 switchToFitView();
 
-                // 最高速度を表示
-                if (state.hasRealTimeData) {
-                    resultMaxSpeed.textContent = state.maxSpeedAchieved.toFixed(1);
-                    maxSpeedOverlay.classList.remove('opacity-0');
-                    maxSpeedCard.classList.remove('scale-90');
-                }
                 return;
             }
 
@@ -874,9 +844,6 @@
             // スピードメーターの更新
             if (state.hasRealTimeData) {
                 const currentSpeed = p2.speed;
-                if (currentSpeed > state.maxSpeedAchieved) {
-                    state.maxSpeedAchieved = currentSpeed;
-                }
 
                 // 針の回転 (-120度 から 120度)
                 // maxSpeedを100%とした時の割合で計算（最低でも30km/hスケールにする）
