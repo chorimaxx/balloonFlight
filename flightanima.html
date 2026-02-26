@@ -44,6 +44,19 @@
             <div class="flex flex-col lg:flex-row items-center justify-between gap-6">
 
                 <div class="flex flex-col md:flex-row items-center gap-6 w-full lg:w-auto flex-1">
+                    <!-- ダッシュボードへ戻るボタン -->
+                    <div class="relative w-full md:w-auto shrink-0">
+                        <button onclick="location.href='index.html'"
+                            class="w-full md:w-auto bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-6 rounded-lg shadow transition duration-200 flex items-center justify-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                            </svg>
+                            ダッシュボードに戻る
+                        </button>
+                    </div>
+
                     <!-- ファイル読み込みボタン -->
                     <div class="relative w-full md:w-auto shrink-0">
                         <input type="file" id="kml-input" accept=".kml" class="hidden" />
@@ -115,6 +128,43 @@
 
             <!-- SVGキャンバス -->
             <div class="w-full h-[500px] sky-bg relative">
+                <!-- スピードメーター (右上に配置) -->
+                <div id="speedometer-container"
+                    class="absolute top-4 right-4 z-10 bg-white/20 backdrop-blur-sm rounded-full p-2 border border-white/30 shadow-lg hidden">
+                    <svg width="120" height="120" viewBox="0 0 100 100">
+                        <!-- 背景円 -->
+                        <circle cx="50" cy="50" r="45" fill="rgba(0,0,0,0.5)" stroke="#fff" stroke-width="2" />
+                        <!-- 目盛り (簡易) -->
+                        <path d="M 20 80 A 42.4 42.4 0 1 1 80 80" fill="none" stroke="#fff" stroke-width="2"
+                            stroke-dasharray="1 5" />
+                        <!-- 針 -->
+                        <line id="speed-needle" x1="50" y1="50" x2="50" y2="15" stroke="#ef4444" stroke-width="3"
+                            stroke-linecap="round" transform="rotate(-120, 50, 50)" />
+                        <circle cx="50" cy="50" r="4" fill="#fff" />
+                        <!-- 現在速度テキスト -->
+                        <text id="speed-value" x="50" y="70" text-anchor="middle" fill="#fff" font-size="16"
+                            font-weight="bold" font-family="monospace">0</text>
+                        <text x="50" y="82" text-anchor="middle" fill="#ccc" font-size="8"
+                            font-family="sans-serif">km/h</text>
+                    </svg>
+                </div>
+
+                <!-- 着陸時の最高速度表示 (中央にポップアップ) -->
+                <div id="max-speed-overlay"
+                    class="absolute inset-0 flex items-center justify-center z-20 pointer-events-none opacity-0 transition-opacity duration-500">
+                    <div class="bg-white/90 backdrop-blur-md rounded-2xl shadow-2xl p-8 border-2 border-blue-500 text-center transform scale-90 transition-transform duration-500"
+                        id="max-speed-card">
+                        <h2 class="text-blue-600 font-bold text-xl mb-2">🎉 フライト完走！</h2>
+                        <div class="text-gray-500 text-sm mb-1">今回の最高速度</div>
+                        <div class="text-5xl font-black text-gray-800 mb-4 font-mono"><span
+                                id="result-max-speed">0.0</span> <span class="text-2xl">km/h</span></div>
+                        <button onclick="document.getElementById('max-speed-overlay').classList.add('opacity-0');"
+                            class="pointer-events-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-full transition-colors">
+                            閉じる
+                        </button>
+                    </div>
+                </div>
+
                 <svg id="canvas" class="w-full h-full" viewBox="0 0 1000 500" preserveAspectRatio="xMidYMid meet">
                     <!-- 固定レイヤー (高度目盛りなど、画面に留まるもの) -->
                     <g id="fixed-grid-layer"></g>
@@ -201,7 +251,8 @@
             lastTimestamp: 0,
             duration: 15000,   // デフォルトの基本再生時間（ミリ秒）
             hasRealTimeData: false,
-            viewMode: 'scrolling'
+            viewMode: 'scrolling',
+            maxSpeedAchieved: 0 // 追加: 実際に到達した最高速度
         };
 
         // --- DOM要素 ---
@@ -221,6 +272,13 @@
         const infoDist = document.getElementById('info-dist');
         const infoProgress = document.getElementById('info-progress');
         const timeModeInfo = document.getElementById('time-mode-info');
+
+        const speedometerContainer = document.getElementById('speedometer-container');
+        const speedNeedle = document.getElementById('speed-needle');
+        const speedValue = document.getElementById('speed-value');
+        const maxSpeedOverlay = document.getElementById('max-speed-overlay');
+        const resultMaxSpeed = document.getElementById('result-max-speed');
+        const maxSpeedCard = document.getElementById('max-speed-card');
 
         const fixedGridLayer = document.getElementById('fixed-grid-layer');
         const scrollingGridLayer = document.getElementById('scrolling-grid-layer');
@@ -516,6 +574,15 @@
 
             timeModeInfo.textContent = hasTimeData ? "🕒 実際の飛行速度で再現中" : "⚠️ 時間データなし (等速移動)";
 
+            // スピードメーターの表示
+            if (state.hasRealTimeData) {
+                speedometerContainer.classList.remove('hidden');
+            } else {
+                speedometerContainer.classList.add('hidden');
+            }
+
+            state.maxSpeedAchieved = 0; // リセット
+
             mapPointsToSVG();
             drawGrid();
             drawBasePath();
@@ -719,6 +786,10 @@
             playBtn.classList.remove('bg-yellow-500', 'hover:bg-yellow-600');
 
             updateRender(0);
+
+            // 最高速度表示を隠す
+            maxSpeedOverlay.classList.add('opacity-0');
+            maxSpeedCard.classList.add('scale-90');
         }
 
         function switchToFitView() {
@@ -751,6 +822,13 @@
                 updateRender(1);
                 togglePlay();
                 switchToFitView();
+
+                // 最高速度を表示
+                if (state.hasRealTimeData) {
+                    resultMaxSpeed.textContent = state.maxSpeedAchieved.toFixed(1);
+                    maxSpeedOverlay.classList.remove('opacity-0');
+                    maxSpeedCard.classList.remove('scale-90');
+                }
                 return;
             }
 
@@ -792,6 +870,22 @@
             // 気球の移動
             balloonGroup.setAttribute('transform', `translate(${currentX}, ${currentY})`);
             balloonSpeed.textContent = speedText;
+
+            // スピードメーターの更新
+            if (state.hasRealTimeData) {
+                const currentSpeed = p2.speed;
+                if (currentSpeed > state.maxSpeedAchieved) {
+                    state.maxSpeedAchieved = currentSpeed;
+                }
+
+                // 針の回転 (-120度 から 120度)
+                // maxSpeedを100%とした時の割合で計算（最低でも30km/hスケールにする）
+                const displayMax = Math.max(state.maxSpeed, 30);
+                const speedRatio = Math.min(currentSpeed / displayMax, 1);
+                const angle = -120 + (speedRatio * 240);
+                speedNeedle.setAttribute('transform', `rotate(${angle}, 50, 50)`);
+                speedValue.textContent = Math.round(currentSpeed);
+            }
 
             // 世界のスクロール (スクロールモード時のみ、気球が1000mを超えたら左へ流す)
             let scrollX = 0;
