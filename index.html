@@ -9,6 +9,7 @@
     <!-- Firebase SDK (Compat version for simplicity) -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
     <style>
         .calendar-grid {
             display: grid;
@@ -103,6 +104,7 @@
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
+        const storage = firebase.storage();
 
         const state = {
             currentDate: new Date(),
@@ -120,9 +122,8 @@
         };
 
         async function saveFlightToCloud(flight) {
-            // 常に localStorage にも保存（Firestoreが1MB制限で失敗する場合のバックアップ）
+            // localStorage にも保存（オフライン・即時アクセス用）
             const local = JSON.parse(localStorage.getItem('balloon_flights') || '[]');
-            // 既存のエントリがあれば置き換え、なければ追加
             const existingIdx = local.findIndex(f => f.id === flight.id);
             if (existingIdx >= 0) {
                 local[existingIdx] = flight;
@@ -132,8 +133,17 @@
             localStorage.setItem('balloon_flights', JSON.stringify(local));
 
             try {
-                await db.collection("flights").doc(String(flight.id)).set(flight);
-                console.log("Cloud sync successful");
+                // KML を Firebase Storage にアップロード
+                const kmlBlob = new Blob([flight.kmlContent], { type: 'application/xml' });
+                const storageRef = storage.ref(`flights/${flight.id}.kml`);
+                await storageRef.put(kmlBlob);
+                const kmlUrl = await storageRef.getDownloadURL();
+
+                // Firestore にはメタデータ + kmlUrl のみ保存（1MB制限回避）
+                const metadata = { ...flight, kmlUrl: kmlUrl };
+                delete metadata.kmlContent;
+                await db.collection("flights").doc(String(flight.id)).set(metadata);
+                console.log("Cloud sync successful (Storage + Firestore)");
             } catch (e) {
                 console.error("Cloud sync failed (localStorage fallback active)", e);
             }
@@ -147,6 +157,8 @@
 
             try {
                 await db.collection("flights").doc(String(flightId)).delete();
+                // Storage からもKMLを削除
+                await storage.ref(`flights/${flightId}.kml`).delete();
             } catch (e) {
                 console.error("Cloud delete failed", e);
             }

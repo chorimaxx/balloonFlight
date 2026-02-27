@@ -20,6 +20,7 @@
     <!-- Firebase SDK (Compat version for simplicity) -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
 </head>
 
 <body class="bg-gray-100 min-h-screen font-sans text-gray-800">
@@ -253,6 +254,7 @@
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
+        const storage = firebase.storage();
 
         // --- DOM要素 ---
         const kmlInput = document.getElementById('kml-input');
@@ -359,12 +361,23 @@
                     const doc = await db.collection("flights").doc(flightId).get();
                     if (doc.exists) {
                         const flight = doc.data();
-                        if (flight.kmlContent) {
+                        let kmlText = null;
+
+                        if (flight.kmlUrl) {
+                            // Firebase Storage からKMLをダウンロード
+                            const response = await fetch(flight.kmlUrl);
+                            kmlText = await response.text();
+                        } else if (flight.kmlContent) {
+                            // レガシー: Firestoreに直接保存されたデータ
+                            kmlText = flight.kmlContent;
+                        }
+
+                        if (kmlText) {
                             fileNameDisplay.textContent = `クラウドデータ: ${flight.date}`;
-                            prepareFlightData(parseKML(flight.kmlContent));
+                            prepareFlightData(parseKML(kmlText));
                             localStorage.removeItem('pending_kml');
                         } else {
-                            // FirestoreにkmlContentがない場合、localStorageフォールバック
+                            // Storage/FirestoreにKMLがない場合、localStorageフォールバック
                             const pendingKml = localStorage.getItem('pending_kml');
                             if (pendingKml) {
                                 fileNameDisplay.textContent = `ローカルデータ: ${flight.date}`;
