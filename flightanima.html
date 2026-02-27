@@ -17,6 +17,9 @@
             transform-origin: center bottom;
         }
     </style>
+    <!-- Firebase SDK (Compat version for simplicity) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 </head>
 
 <body class="bg-gray-100 min-h-screen font-sans text-gray-800">
@@ -239,6 +242,18 @@
             viewMode: 'scrolling'
         };
 
+        // --- Firebase 設定 ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDuAATZ0W0XBz_EG_zPbR1u_I8w348eKj0",
+            authDomain: "balloonanime.firebaseapp.com",
+            projectId: "balloonanime",
+            storageBucket: "balloonanime.firebasestorage.app",
+            messagingSenderId: "420793166695",
+            appId: "1:420793166695:web:60939d5f5cbaa3631a1dc2"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
         // --- DOM要素 ---
         const kmlInput = document.getElementById('kml-input');
         const uploadBtn = document.getElementById('upload-btn');
@@ -276,7 +291,7 @@
         resetBtn.addEventListener('click', resetAnimation);
 
         // --- 初期化処理 ---
-        window.onload = function () {
+        window.onload = async function () {
             balloonGroup.setAttribute('transform', 'translate(50, 450)');
             balloonSpeed.textContent = '';
             worldLayer.setAttribute('transform', 'translate(0, 0)');
@@ -334,17 +349,64 @@
                 scrollingGridLayer.appendChild(text);
             }
 
-            // Dashboardからの自動読み込みチェック
-            const pendingKml = localStorage.getItem('pending_kml');
-            if (pendingKml) {
-                fileNameDisplay.textContent = "読み込み済みデータ";
-                const parsedData = parseKML(pendingKml);
-                if (parsedData.length >= 2) {
-                    prepareFlightData(parsedData);
-                    // 読み込み後、自動再生を開始（必要に応じて）
-                    // togglePlay(); 
+            // Dashboardや外部共有リンクからの自動読み込みチェック
+            const urlParams = new URLSearchParams(window.location.search);
+            const flightId = urlParams.get('flightId');
+
+            if (flightId) {
+                fileNameDisplay.textContent = "クラウドデータを読み込み中...";
+                try {
+                    const doc = await db.collection("flights").doc(flightId).get();
+                    if (doc.exists) {
+                        const flight = doc.data();
+                        if (flight.kmlContent) {
+                            fileNameDisplay.textContent = `クラウドデータ: ${flight.date}`;
+                            prepareFlightData(parseKML(flight.kmlContent));
+                            localStorage.removeItem('pending_kml');
+                        } else {
+                            // FirestoreにkmlContentがない場合、localStorageフォールバック
+                            const pendingKml = localStorage.getItem('pending_kml');
+                            if (pendingKml) {
+                                fileNameDisplay.textContent = `ローカルデータ: ${flight.date}`;
+                                prepareFlightData(parseKML(pendingKml));
+                                localStorage.removeItem('pending_kml');
+                            } else {
+                                fileNameDisplay.textContent = "KMLデータが見つかりません";
+                            }
+                        }
+                    } else {
+                        // Firestoreにドキュメント自体がない場合、localStorageフォールバック
+                        const pendingKml = localStorage.getItem('pending_kml');
+                        if (pendingKml) {
+                            fileNameDisplay.textContent = "ローカルデータを読み込み中...";
+                            prepareFlightData(parseKML(pendingKml));
+                            localStorage.removeItem('pending_kml');
+                        } else {
+                            fileNameDisplay.textContent = "データが見つかりません";
+                        }
+                    }
+                } catch (e) {
+                    console.error("Firebase fetch error", e);
+                    // エラー時もlocalStorageフォールバック
+                    const pendingKml = localStorage.getItem('pending_kml');
+                    if (pendingKml) {
+                        fileNameDisplay.textContent = "ローカルデータを使用中";
+                        prepareFlightData(parseKML(pendingKml));
+                        localStorage.removeItem('pending_kml');
+                    } else {
+                        fileNameDisplay.textContent = "読み込みエラー";
+                    }
                 }
-                localStorage.removeItem('pending_kml');
+            } else {
+                const pendingKml = localStorage.getItem('pending_kml');
+                if (pendingKml) {
+                    fileNameDisplay.textContent = "読み込み済みデータ";
+                    const parsedData = parseKML(pendingKml);
+                    if (parsedData.length >= 2) {
+                        prepareFlightData(parsedData);
+                    }
+                    localStorage.removeItem('pending_kml');
+                }
             }
         };
 

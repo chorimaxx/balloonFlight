@@ -6,6 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>フライトログ・ダッシュボード</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDK (Compat version for simplicity) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <style>
         .calendar-grid {
             display: grid;
@@ -89,9 +92,21 @@
     </div>
 
     <script>
+        // --- Firebase 設定 ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDuAATZ0W0XBz_EG_zPbR1u_I8w348eKj0",
+            authDomain: "balloonanime.firebaseapp.com",
+            projectId: "balloonanime",
+            storageBucket: "balloonanime.firebasestorage.app",
+            messagingSenderId: "420793166695",
+            appId: "1:420793166695:web:60939d5f5cbaa3631a1dc2"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
         const state = {
             currentDate: new Date(),
-            flights: JSON.parse(localStorage.getItem('balloon_flights') || '[]')
+            flights: [] // localStorage の代わりに Firestore から取得
         };
 
         const elements = {
@@ -104,8 +119,54 @@
             uploadBtn: document.getElementById('upload-btn')
         };
 
-        function saveFlights() {
-            localStorage.setItem('balloon_flights', JSON.stringify(state.flights));
+        async function saveFlightToCloud(flight) {
+            // 常に localStorage にも保存（Firestoreが1MB制限で失敗する場合のバックアップ）
+            const local = JSON.parse(localStorage.getItem('balloon_flights') || '[]');
+            // 既存のエントリがあれば置き換え、なければ追加
+            const existingIdx = local.findIndex(f => f.id === flight.id);
+            if (existingIdx >= 0) {
+                local[existingIdx] = flight;
+            } else {
+                local.push(flight);
+            }
+            localStorage.setItem('balloon_flights', JSON.stringify(local));
+
+            try {
+                await db.collection("flights").doc(String(flight.id)).set(flight);
+                console.log("Cloud sync successful");
+            } catch (e) {
+                console.error("Cloud sync failed (localStorage fallback active)", e);
+            }
+        }
+
+        async function deleteFlightFromCloud(flightId) {
+            // localStorage からも削除
+            const local = JSON.parse(localStorage.getItem('balloon_flights') || '[]');
+            const filtered = local.filter(f => f.id !== flightId);
+            localStorage.setItem('balloon_flights', JSON.stringify(filtered));
+
+            try {
+                await db.collection("flights").doc(String(flightId)).delete();
+            } catch (e) {
+                console.error("Cloud delete failed", e);
+            }
+        }
+
+        async function loadFlightsFromCloud() {
+            const localFlights = JSON.parse(localStorage.getItem('balloon_flights') || '[]');
+            try {
+                const snapshot = await db.collection("flights").orderBy("date", "desc").get();
+                const cloudFlights = snapshot.docs.map(doc => doc.data());
+                // Firestore と localStorage のデータをIDで重複排除してマージ
+                const cloudIds = new Set(cloudFlights.map(f => f.id));
+                const localOnly = localFlights.filter(f => !cloudIds.has(f.id));
+                state.flights = [...cloudFlights, ...localOnly];
+                renderCalendar();
+            } catch (e) {
+                console.error("Cloud load failed", e);
+                state.flights = localFlights;
+                renderCalendar();
+            }
         }
 
         function initSelection() {
@@ -163,7 +224,10 @@
                     `;
                     btn.onclick = (e) => {
                         e.stopPropagation();
-                        localStorage.setItem('pending_kml', flight.kmlContent);
+                        // localStorageにKMLデータを一時保存（Firestoreフェッチ失敗時のフォールバック用）
+                        if (flight.kmlContent) {
+                            localStorage.setItem('pending_kml', flight.kmlContent);
+                        }
                         window.location.href = `flightanima.html?flightId=${flight.id}`;
                     };
                     flightContainer.appendChild(btn);
@@ -176,11 +240,11 @@
                         </svg>
                     `;
                     deleteBtn.className = 'absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover/flight:opacity-100 transition-opacity hover:bg-red-600 shadow-sm z-10';
-                    deleteBtn.onclick = (e) => {
+                    deleteBtn.onclick = async (e) => {
                         e.stopPropagation();
-                        if (confirm('このフライト記録を削除しますか？')) {
+                        if (confirm('このフライト記録を削除しますか？（クラウドからも削除されます）')) {
+                            await deleteFlightFromCloud(flight.id);
                             state.flights = state.flights.filter(f => f.id !== flight.id);
-                            saveFlights();
                             renderCalendar();
                         }
                     };
@@ -314,7 +378,7 @@
                 };
 
                 state.flights.push(newFlight);
-                saveFlights();
+                saveFlightToCloud(newFlight); // クラウドへ保存
 
                 // カレンダーの表示位置をフライトの日に合わせる
                 state.currentDate = firstPoint.time ? new Date(firstPoint.time) : new Date();
@@ -329,7 +393,7 @@
         elements.yearSelect.onchange = (e) => { state.currentDate.setFullYear(parseInt(e.target.value)); renderCalendar(); };
 
         initSelection();
-        renderCalendar();
+        loadFlightsFromCloud(); // 初回読み込み
     </script>
 </body>
 
