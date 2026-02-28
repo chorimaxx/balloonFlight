@@ -35,6 +35,13 @@
             <p class="text-gray-500">フライト記録の管理と新規登録</p>
         </header>
 
+        <!-- 同期ステータスバー -->
+        <div id="sync-status"
+            class="mb-4 px-4 py-2 rounded-lg text-sm flex items-center gap-2 bg-gray-100 text-gray-500">
+            <span id="sync-icon">⏳</span>
+            <span id="sync-message">クラウドに接続中...</span>
+        </div>
+
         <!-- コントロールパネル -->
         <div class="bg-white rounded-2xl shadow-xl p-6 mb-8 border border-gray-100">
             <div class="flex flex-col sm:flex-row items-center justify-between gap-6">
@@ -144,8 +151,10 @@
                 delete metadata.kmlContent;
                 await db.collection("flights").doc(String(flight.id)).set(metadata);
                 console.log("Cloud sync successful (Storage + Firestore)");
+                updateSyncStatus('✅', 'フライトをクラウドに保存しました', 'bg-green-50 text-green-700');
             } catch (e) {
-                console.error("Cloud sync failed (localStorage fallback active)", e);
+                console.error("Cloud sync failed:", e.code, e.message, e);
+                updateSyncStatus('⚠️', `クラウド保存失敗: ${e.message || e}（ローカルには保存済み）`, 'bg-yellow-50 text-yellow-700');
             }
         }
 
@@ -164,19 +173,30 @@
             }
         }
 
+        function updateSyncStatus(icon, message, bgClass) {
+            document.getElementById('sync-icon').textContent = icon;
+            document.getElementById('sync-message').textContent = message;
+            const bar = document.getElementById('sync-status');
+            bar.className = 'mb-4 px-4 py-2 rounded-lg text-sm flex items-center gap-2 ' + bgClass;
+        }
+
         async function loadFlightsFromCloud() {
             const localFlights = JSON.parse(localStorage.getItem('balloon_flights') || '[]');
             try {
+                updateSyncStatus('⏳', 'クラウドからデータを読み込み中...', 'bg-blue-50 text-blue-700');
                 const snapshot = await db.collection("flights").orderBy("date", "desc").get();
                 const cloudFlights = snapshot.docs.map(doc => doc.data());
+                console.log(`Cloud: ${cloudFlights.length} flights loaded, Local: ${localFlights.length} flights`);
                 // Firestore と localStorage のデータをIDで重複排除してマージ
                 const cloudIds = new Set(cloudFlights.map(f => f.id));
                 const localOnly = localFlights.filter(f => !cloudIds.has(f.id));
                 state.flights = [...cloudFlights, ...localOnly];
+                updateSyncStatus('✅', `クラウド同期OK（クラウド: ${cloudFlights.length}件, ローカル専用: ${localOnly.length}件）`, 'bg-green-50 text-green-700');
                 renderCalendar();
             } catch (e) {
-                console.error("Cloud load failed", e);
+                console.error("Cloud load failed:", e.code, e.message, e);
                 state.flights = localFlights;
+                updateSyncStatus('❌', `クラウド読み込み失敗: ${e.message || e}（ローカルデータ ${localFlights.length}件を表示中）`, 'bg-red-50 text-red-700');
                 renderCalendar();
             }
         }
