@@ -260,7 +260,7 @@
                         if (flight.kmlContent) {
                             localStorage.setItem('pending_kml', flight.kmlContent);
                         }
-                        window.location.href = `flightanima.html?flightId=${flight.id}`;
+                        window.location.href = `flightanima.html?flightId=${flight.id}&date=${flight.date}`;
                     };
                     flightContainer.appendChild(btn);
 
@@ -423,6 +423,12 @@
         elements.prevMonthBtn.onclick = () => { state.currentDate.setMonth(state.currentDate.getMonth() - 1); renderCalendar(); };
         elements.nextMonthBtn.onclick = () => { state.currentDate.setMonth(state.currentDate.getMonth() + 1); renderCalendar(); };
         elements.yearSelect.onchange = (e) => { state.currentDate.setFullYear(parseInt(e.target.value)); renderCalendar(); };
+
+        const qsParams = new URLSearchParams(window.location.search);
+        const qsDate = qsParams.get('date');
+        if (qsDate) {
+            state.currentDate = new Date(qsDate);
+        }
 
         initSelection();
         loadFlightsFromCloud(); // 初回読み込み
